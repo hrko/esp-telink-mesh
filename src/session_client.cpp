@@ -1,3 +1,8 @@
+/**
+ * @file
+ * @brief Implementation of the ESP-IDF Telink Mesh v1 session client.
+ */
+
 #include <esp_telink_mesh/v1/session_client.h>
 
 #include <algorithm>
@@ -15,8 +20,13 @@ namespace v1 {
 
 namespace {
 
+/// @internal Logging tag.
 static const char *const TAG = "esp_telink_mesh";
 
+/**
+ * @internal
+ * @brief Builds the 16-byte Telink mesh XOR key from credentials.
+ */
 std::array<uint8_t, 16> mesh_xor_key(const std::string &name, const std::string &password) {
   std::array<uint8_t, 16> out{};
   for (size_t i = 0; i < out.size(); i++) {
@@ -27,6 +37,14 @@ std::array<uint8_t, 16> mesh_xor_key(const std::string &name, const std::string 
   return out;
 }
 
+/**
+ * @internal
+ * @brief AES-ECB helper using Telink byte-order convention.
+ * @param key AES-128 key material.
+ * @param data Plaintext input block.
+ * @param out Output ciphertext block.
+ * @return `true` on success.
+ */
 bool aes_encrypt_telink(const std::array<uint8_t, 16> &key, const std::array<uint8_t, 16> &data,
                         std::array<uint8_t, 16> *out) {
   if (out == nullptr) {
@@ -61,11 +79,19 @@ bool aes_encrypt_telink(const std::array<uint8_t, 16> &key, const std::array<uin
   return true;
 }
 
+/**
+ * @internal
+ * @brief Derives encrypted pairing bytes from a random challenge block.
+ */
 bool key_encrypt(const std::string &mesh_name, const std::string &mesh_password, const std::array<uint8_t, 16> &key,
                  std::array<uint8_t, 16> *out) {
   return aes_encrypt_telink(key, mesh_xor_key(mesh_name, mesh_password), out);
 }
 
+/**
+ * @internal
+ * @brief Derives the session key from local random bytes and peer response bytes.
+ */
 bool generate_session_key(const std::string &mesh_name, const std::string &mesh_password,
                           const std::array<uint8_t, 8> &data1, const uint8_t *data2_8,
                           std::array<uint8_t, 16> *out) {
@@ -81,6 +107,10 @@ bool generate_session_key(const std::string &mesh_name, const std::string &mesh_
   return aes_encrypt_telink(mesh_xor_key(mesh_name, mesh_password), data, out);
 }
 
+/**
+ * @internal
+ * @brief Writes a boolean value only when the destination pointer is non-null.
+ */
 void set_flag_(bool *out, bool value) {
   if (out != nullptr) {
     *out = value;

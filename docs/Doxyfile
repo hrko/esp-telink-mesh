@@ -1,0 +1,31 @@
+PROJECT_NAME           = "esp-telink-mesh"
+PROJECT_BRIEF          = "ESP-IDF Telink Mesh v1 session client library"
+OUTPUT_DIRECTORY       = .doxygen
+OUTPUT_LANGUAGE        = English
+USE_MDFILE_AS_MAINPAGE = ../README.md
+
+INPUT                  = ../include ../src ../README.md
+FILE_PATTERNS          = *.h *.hpp *.cpp *.md
+RECURSIVE              = YES
+
+EXTRACT_ALL            = NO
+EXTRACT_PRIVATE        = YES
+EXTRACT_STATIC         = YES
+INTERNAL_DOCS          = YES
+HIDE_UNDOC_MEMBERS     = YES
+HIDE_UNDOC_CLASSES     = YES
+JAVADOC_AUTOBRIEF      = YES
+
+WARN_IF_UNDOCUMENTED   = YES
+QUIET                  = NO
+
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+FULL_PATH_NAMES        = NO
+
+# Doxygen Awesome theme (https://github.com/jothepro/doxygen-awesome-css)
+GENERATE_TREEVIEW      = YES
+DISABLE_INDEX          = NO
+FULL_SIDEBAR           = NO
+HTML_EXTRA_STYLESHEET  = doxygen-awesome.css
+HTML_COLORSTYLE        = LIGHT
