@@ -409,15 +409,16 @@ bool SessionClient::handle_notify_packet(uint16_t handle, const uint8_t *value, 
   return true;
 }
 
-bool SessionClient::send_mesh_command(uint16_t target, uint8_t opcode, const uint8_t *payload, size_t payload_len) {
+SendMeshCommandResult SessionClient::send_mesh_command(uint16_t target, uint8_t opcode, const uint8_t *payload,
+                                                       size_t payload_len) {
   if (!this->session_ready_) {
-    return false;
+    return SendMeshCommandResult::NOT_READY;
   }
   if (this->control_handle_ == 0 || this->gattc_if_ == ESP_GATT_IF_NONE) {
-    return false;
+    return SendMeshCommandResult::NOT_READY;
   }
   if (this->control_write_pending_) {
-    return false;
+    return SendMeshCommandResult::BUSY_PENDING_ACK;
   }
 
   uint8_t packet[20] = {0};
@@ -441,7 +442,7 @@ bool SessionClient::send_mesh_command(uint16_t target, uint8_t opcode, const uin
                                ESP_GATT_WRITE_TYPE_RSP, ESP_GATT_AUTH_REQ_NONE);
   if (status != ESP_GATT_OK) {
     ESP_LOGW(TAG, "send_packet write failed status=%d", status);
-    return false;
+    return SendMeshCommandResult::WRITE_ERROR;
   }
 
   this->control_write_pending_ = true;
@@ -453,7 +454,7 @@ bool SessionClient::send_mesh_command(uint16_t target, uint8_t opcode, const uin
     this->packet_count_ = 1;
   }
 
-  return true;
+  return SendMeshCommandResult::SENT;
 }
 
 }  // namespace v1

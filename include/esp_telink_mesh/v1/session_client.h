@@ -16,6 +16,13 @@ struct DecryptedNotify {
   std::array<uint8_t, 10> payload{};
 };
 
+enum class SendMeshCommandResult : uint8_t {
+  SENT = 0,
+  BUSY_PENDING_ACK = 1,
+  NOT_READY = 2,
+  WRITE_ERROR = 3,
+};
+
 class SessionClient {
  public:
   void configure(const std::string &mesh_name, const std::string &mesh_password, uint16_t vendor_id);
@@ -33,7 +40,7 @@ class SessionClient {
                             bool *need_disconnect, bool *session_established);
   bool handle_notify_packet(uint16_t handle, const uint8_t *value, uint16_t value_len, DecryptedNotify *out) const;
 
-  bool send_mesh_command(uint16_t target, uint8_t opcode, const uint8_t *payload, size_t payload_len);
+  SendMeshCommandResult send_mesh_command(uint16_t target, uint8_t opcode, const uint8_t *payload, size_t payload_len);
 
   bool is_session_ready() const { return this->session_ready_; }
   uint16_t notify_handle() const { return this->notify_handle_; }
