@@ -146,6 +146,13 @@ class SessionClient {
   bool is_session_ready() const { return this->session_ready_; }
 
   /**
+   * @brief Returns true when a control write has waited too long for its completion event.
+   * @note The caller must reset the session and disconnect before reconnecting; do not retry
+   *       on the same connection because a late completion could acknowledge a newer write.
+   */
+  bool is_control_write_timed_out(uint32_t timeout_ms) const;
+
+  /**
    * @brief Gets the configured notify characteristic handle.
    */
   uint16_t notify_handle() const { return this->notify_handle_; }
@@ -227,6 +234,7 @@ class SessionClient {
   bool notify_register_pending_{false};
   bool notify_enable_pending_{false};
   bool control_write_pending_{false};
+  int64_t control_write_started_us_{0};
   bool session_ready_{false};
 
   uint16_t packet_count_{1};

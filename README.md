@@ -10,6 +10,10 @@ ESP-IDF oriented Telink Mesh v1 session client library extracted from `esphome-s
 
 - Depends on ESP-IDF BLE GATT client APIs.
 - Implements pairing/session lifecycle, packet encrypt/decrypt, and notify decode.
+- Call `is_control_write_timed_out(timeout_ms)` regularly, including when the
+  outgoing queue is empty. When it returns true, reset the session and disconnect
+  the BLE link before pairing again. The ESPHome integration uses 10 seconds.
+- Host regression tests: `bash tests/run.sh` (Linux, g++ with C++17).
 
 ## Doxygen
 

@@ -11,6 +11,7 @@
 
 #include <esp_log.h>
 #include <esp_random.h>
+#include <esp_timer.h>
 
 #define MBEDTLS_AES_ALT
 #include <aes_alt.h>
@@ -143,6 +144,7 @@ void SessionClient::reset() {
   this->notify_register_pending_ = false;
   this->notify_enable_pending_ = false;
   this->control_write_pending_ = false;
+  this->control_write_started_us_ = 0;
   this->session_ready_ = false;
 
   this->packet_count_ = 1;
@@ -476,6 +478,7 @@ SendMeshCommandResult SessionClient::send_mesh_command(uint16_t target, uint8_t 
   }
 
   this->control_write_pending_ = true;
+  this->control_write_started_us_ = esp_timer_get_time();
   ESP_LOGV(TAG, "tx seq=0x%04X target=0x%04X opcode=0x%02X len=%u", this->packet_count_, target, opcode,
            static_cast<unsigned>(data_len));
 
@@ -485,6 +488,11 @@ SendMeshCommandResult SessionClient::send_mesh_command(uint16_t target, uint8_t 
   }
 
   return SendMeshCommandResult::SENT;
+}
+
+bool SessionClient::is_control_write_timed_out(uint32_t timeout_ms) const {
+  return this->control_write_pending_ &&
+         esp_timer_get_time() - this->control_write_started_us_ >= static_cast<int64_t>(timeout_ms) * 1000;
 }
 
 }  // namespace v1

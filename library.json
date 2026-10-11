@@ -1,6 +1,6 @@
 {
   "name": "esp-telink-mesh",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "ESP-IDF Telink Mesh v1 session client library",
   "keywords": ["telink", "mesh", "ble", "esp32", "esp-idf"],
   "license": "MIT",
