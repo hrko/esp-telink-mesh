@@ -2,6 +2,7 @@
 #include <esp_timer.h>
 #include <cassert>
 #include <iostream>
+#include <pair_fixture.h>
 using namespace esp_telink_mesh::v1;
 
 static void pair(SessionClient &session) {
@@ -13,8 +14,7 @@ static void pair(SessionClient &session) {
   assert(session.begin_pairing());
   bool disconnect = false, established = false;
   assert(session.handle_write_char_evt(3, ESP_GATT_OK, &disconnect, &established));
-  uint8_t response[9]{};
-  assert(session.handle_read_char_evt(3, ESP_GATT_OK, response, 9, &disconnect, &established));
+  assert(session.handle_read_char_evt(3, ESP_GATT_OK, pair_response.data(), pair_response.size(), &disconnect, &established));
   assert(session.handle_reg_for_notify_evt(1, ESP_GATT_OK, &disconnect, &established));
   assert(session.handle_write_char_evt(1, ESP_GATT_OK, &disconnect, &established));
   assert(established && !disconnect);

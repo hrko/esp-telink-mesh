@@ -295,8 +295,25 @@ bool SessionClient::handle_read_char_evt(uint16_t handle, esp_gatt_status_t stat
 
 bool SessionClient::handle_pairing_response_(const uint8_t *data, uint16_t len, bool *need_disconnect,
                                              bool *session_established) {
-  if (data == nullptr || len < 9) {
+  if (data == nullptr || len < 17 || data[0] != 0x0D) {
     ESP_LOGW(TAG, "invalid pairing response len=%u", len);
+    set_flag_(need_disconnect, true);
+    return false;
+  }
+
+  std::array<uint8_t, 16> peer_random{};
+  std::copy_n(data + 1, 8, peer_random.begin());
+  std::array<uint8_t, 16> expected{};
+  if (!key_encrypt(this->mesh_name_, this->mesh_password_, peer_random, &expected)) {
+    set_flag_(need_disconnect, true);
+    return false;
+  }
+  uint8_t difference = 0;
+  for (size_t i = 0; i < 8; ++i) {
+    difference |= expected[i] ^ data[9 + i];
+  }
+  if (difference != 0) {
+    ESP_LOGW(TAG, "pairing response authentication failed");
     set_flag_(need_disconnect, true);
     return false;
   }
