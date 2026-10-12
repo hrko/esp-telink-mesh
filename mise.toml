@@ -1,0 +1,18 @@
+[settings]
+experimental = true
+lockfile = true
+lockfile_platforms = ["linux-x64", "windows-x64"]
+
+[tools]
+python = "3.15.0"
+uv = "0.13.0"
+"conda:clang-tools" = "22.1.8"
+"conda:clang" = "22.1.8"
+
+[tasks.esphome-compile]
+run = "uv run --locked esphome compile tests/compile/compile.yaml"
+
+[tasks.cpp-check]
+description = "Check all C++ sources and public headers"
+depends = ["esphome-compile"]
+run = "uv run --locked python tools/check_cpp.py --database tests/compile/.esphome/build/mesh-compile-test/build/compile_commands.json"

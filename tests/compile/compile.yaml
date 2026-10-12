@@ -1,0 +1,18 @@
+esphome:
+  name: mesh-compile-test
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: esp-idf
+logger:
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [mesh_check]
+mesh_check:
+
+ble_client:
+  - id: mesh_test_client
+    mac_address: 'AA:BB:CC:DD:EE:FF'
+    auto_connect: false

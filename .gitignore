@@ -1,2 +1,6 @@
 .doxygen/
 docs/.doxygen/
+
+.venv/
+.esphome/
+__pycache__/
