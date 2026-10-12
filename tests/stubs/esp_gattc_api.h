@@ -11,17 +11,22 @@ constexpr int ESP_GATT_WRITE_TYPE_RSP = 1;
 constexpr int ESP_GATT_WRITE_TYPE_NO_RSP = 2;
 constexpr int ESP_GATT_AUTH_REQ_NONE = 0;
 inline int write_result = ESP_GATT_OK;
+inline int read_result = ESP_GATT_OK;
+inline int register_result = ESP_GATT_OK;
+inline int notify_rsp_result = ESP_GATT_OK;
+inline int notify_no_rsp_result = ESP_GATT_OK;
 inline unsigned control_writes = 0;
 inline std::array<uint8_t, 20> last_control_packet{};
-inline int esp_ble_gattc_write_char(esp_gatt_if_t, uint16_t, uint16_t handle, uint16_t length, uint8_t *value, int, int) {
+inline int esp_ble_gattc_write_char(esp_gatt_if_t, uint16_t, uint16_t handle, uint16_t length, uint8_t *value, int type, int) {
+  if (handle == 1) return type == ESP_GATT_WRITE_TYPE_RSP ? notify_rsp_result : notify_no_rsp_result;
   if (handle == 2 && write_result == ESP_GATT_OK) {
     ++control_writes;
     std::copy_n(value, std::min<size_t>(length, last_control_packet.size()), last_control_packet.begin());
   }
   return write_result;
 }
-inline int esp_ble_gattc_read_char(esp_gatt_if_t, uint16_t, uint16_t, int) { return ESP_GATT_OK; }
-inline int esp_ble_gattc_register_for_notify(esp_gatt_if_t, uint8_t *, uint16_t) { return ESP_GATT_OK; }
+inline int esp_ble_gattc_read_char(esp_gatt_if_t, uint16_t, uint16_t, int) { return read_result; }
+inline int esp_ble_gattc_register_for_notify(esp_gatt_if_t, uint8_t *, uint16_t) { return register_result; }
 enum esp_gattc_cb_event_t {
   ESP_GATTC_DISCONNECT_EVT, ESP_GATTC_CLOSE_EVT, ESP_GATTC_SEARCH_CMPL_EVT,
   ESP_GATTC_WRITE_CHAR_EVT, ESP_GATTC_REG_FOR_NOTIFY_EVT, ESP_GATTC_READ_CHAR_EVT, ESP_GATTC_NOTIFY_EVT

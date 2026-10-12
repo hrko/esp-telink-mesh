@@ -143,9 +143,13 @@ class SessionClient {
   SendMeshCommandResult send_mesh_command(uint16_t target, uint8_t opcode, const uint8_t *payload, size_t payload_len);
 
   /**
-   * @brief Indicates whether a valid session key has been established.
+   * @brief Indicates whether authentication and notification setup have completed.
    */
-  bool is_session_ready() const { return this->session_ready_; }
+  bool is_session_ready() const { return this->setup_step_ == SetupStep::READY; }
+
+  /// True when the current pairing or notification setup step has timed out.
+  /// The caller must reset and disconnect before attempting another session.
+  bool is_setup_timed_out(uint32_t timeout_ms) const;
 
   /**
    * @brief Returns true when a control write has waited too long for its completion event.
@@ -173,6 +177,9 @@ class SessionClient {
   uint16_t pair_handle() const { return this->pair_handle_; }
 
  private:
+  enum class SetupStep : uint8_t { IDLE, PAIR_WRITE, PAIR_READ, NOTIFY_REGISTER, NOTIFY_ENABLE, READY };
+  void set_setup_step_(SetupStep step);
+  bool fail_setup_(bool *need_disconnect);
   /**
    * @internal
    * @brief Registers for notify on the configured notify characteristic.
@@ -234,13 +241,10 @@ class SessionClient {
   std::array<uint8_t, 8> pair_random_{};
   std::array<uint8_t, 16> session_key_{};
 
-  bool pairing_write_pending_{false};
-  bool pairing_read_pending_{false};
-  bool notify_register_pending_{false};
-  bool notify_enable_pending_{false};
+  SetupStep setup_step_{SetupStep::IDLE};
+  int64_t setup_step_started_us_{0};
   bool control_write_pending_{false};
   int64_t control_write_started_us_{0};
-  bool session_ready_{false};
 
   uint32_t packet_count_{1};
 };

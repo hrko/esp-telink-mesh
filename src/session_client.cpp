@@ -139,13 +139,10 @@ void SessionClient::reset() {
   this->pair_random_.fill(0);
   this->session_key_.fill(0);
 
-  this->pairing_write_pending_ = false;
-  this->pairing_read_pending_ = false;
-  this->notify_register_pending_ = false;
-  this->notify_enable_pending_ = false;
+  this->setup_step_ = SetupStep::IDLE;
+  this->setup_step_started_us_ = 0;
   this->control_write_pending_ = false;
   this->control_write_started_us_ = 0;
-  this->session_ready_ = false;
 
   this->packet_count_ = 1;
 }
@@ -177,7 +174,8 @@ void SessionClient::set_mac_data_from_bda_(const esp_bd_addr_t remote_bda) {
 }
 
 bool SessionClient::begin_pairing() {
-  if (this->pair_handle_ == 0 || this->gattc_if_ == ESP_GATT_IF_NONE) {
+  if (this->pair_handle_ == 0 || this->notify_handle_ == 0 || this->control_handle_ == 0 ||
+      this->gattc_if_ == ESP_GATT_IF_NONE || this->setup_step_ != SetupStep::IDLE) {
     ESP_LOGW(TAG, "pairing prerequisites are not ready");
     return false;
   }
@@ -208,7 +206,7 @@ bool SessionClient::begin_pairing() {
     return false;
   }
 
-  this->pairing_write_pending_ = true;
+  this->set_setup_step_(SetupStep::PAIR_WRITE);
   return true;
 }
 
@@ -227,30 +225,25 @@ bool SessionClient::handle_write_char_evt(uint16_t handle, esp_gatt_status_t sta
     return status == ESP_GATT_OK;
   }
 
-  if (status != ESP_GATT_OK) {
-    ESP_LOGW(TAG, "write failed handle=0x%04X status=%d", handle, status);
-    if (handle == this->pair_handle_) {
-      set_flag_(need_disconnect, true);
+  if (this->setup_step_ == SetupStep::PAIR_WRITE && handle == this->pair_handle_) {
+    if (status != ESP_GATT_OK) {
+      return this->fail_setup_(need_disconnect);
     }
-    return false;
-  }
-
-  if (this->pairing_write_pending_ && handle == this->pair_handle_) {
-    this->pairing_write_pending_ = false;
-    this->pairing_read_pending_ = true;
     const auto read_status =
         esp_ble_gattc_read_char(this->gattc_if_, this->conn_id_, this->pair_handle_, ESP_GATT_AUTH_REQ_NONE);
     if (read_status != ESP_GATT_OK) {
-      this->pairing_read_pending_ = false;
       ESP_LOGW(TAG, "pair read failed status=%d", read_status);
-      set_flag_(need_disconnect, true);
-      return false;
+      return this->fail_setup_(need_disconnect);
     }
+    this->set_setup_step_(SetupStep::PAIR_READ);
     return true;
   }
 
-  if (this->notify_enable_pending_ && handle == this->notify_handle_) {
-    this->notify_enable_pending_ = false;
+  if (this->setup_step_ == SetupStep::NOTIFY_ENABLE && handle == this->notify_handle_) {
+    if (status != ESP_GATT_OK) {
+      return this->fail_setup_(need_disconnect);
+    }
+    this->set_setup_step_(SetupStep::READY);
     set_flag_(session_established, true);
     return true;
   }
@@ -263,15 +256,18 @@ bool SessionClient::handle_reg_for_notify_evt(uint16_t handle, esp_gatt_status_t
   set_flag_(need_disconnect, false);
   set_flag_(session_established, false);
 
-  if (!this->notify_register_pending_ || handle != this->notify_handle_) {
+  if (this->setup_step_ != SetupStep::NOTIFY_REGISTER || handle != this->notify_handle_) {
     return false;
   }
 
-  this->notify_register_pending_ = false;
   if (status != ESP_GATT_OK) {
     ESP_LOGW(TAG, "REG_FOR_NOTIFY failed status=%d", status);
+    return this->fail_setup_(need_disconnect);
   }
-  return this->write_notify_enable_(session_established);
+  if (!this->write_notify_enable_(session_established)) {
+    return this->fail_setup_(need_disconnect);
+  }
+  return true;
 }
 
 bool SessionClient::handle_read_char_evt(uint16_t handle, esp_gatt_status_t status, const uint8_t *value,
@@ -279,18 +275,19 @@ bool SessionClient::handle_read_char_evt(uint16_t handle, esp_gatt_status_t stat
   set_flag_(need_disconnect, false);
   set_flag_(session_established, false);
 
-  if (!this->pairing_read_pending_ || handle != this->pair_handle_) {
+  if (this->setup_step_ != SetupStep::PAIR_READ || handle != this->pair_handle_) {
     return false;
   }
 
-  this->pairing_read_pending_ = false;
   if (status != ESP_GATT_OK) {
     ESP_LOGW(TAG, "pair read status=%d", status);
-    set_flag_(need_disconnect, true);
-    return false;
+    return this->fail_setup_(need_disconnect);
   }
 
-  return this->handle_pairing_response_(value, value_len, need_disconnect, session_established);
+  if (!this->handle_pairing_response_(value, value_len, need_disconnect, session_established)) {
+    return this->fail_setup_(need_disconnect);
+  }
+  return true;
 }
 
 bool SessionClient::handle_pairing_response_(const uint8_t *data, uint16_t len, bool *need_disconnect,
@@ -324,17 +321,13 @@ bool SessionClient::handle_pairing_response_(const uint8_t *data, uint16_t len, 
     return false;
   }
 
-  this->session_ready_ = true;
   this->packet_count_ = esp_random() & 0xFFFFFF;
   if (this->packet_count_ == 0) {
     this->packet_count_ = 1;
   }
 
-  if (!this->register_notify_()) {
-    this->write_notify_enable_(session_established);
-  }
-
-  return true;
+  (void) session_established;
+  return this->register_notify_();
 }
 
 bool SessionClient::register_notify_() {
@@ -348,7 +341,7 @@ bool SessionClient::register_notify_() {
     return false;
   }
 
-  this->notify_register_pending_ = true;
+  this->set_setup_step_(SetupStep::NOTIFY_REGISTER);
   return true;
 }
 
@@ -361,7 +354,7 @@ bool SessionClient::write_notify_enable_(bool *session_established) {
   auto status = esp_ble_gattc_write_char(this->gattc_if_, this->conn_id_, this->notify_handle_, sizeof(value), &value,
                                          ESP_GATT_WRITE_TYPE_RSP, ESP_GATT_AUTH_REQ_NONE);
   if (status == ESP_GATT_OK) {
-    this->notify_enable_pending_ = true;
+    this->set_setup_step_(SetupStep::NOTIFY_ENABLE);
     return true;
   }
 
@@ -372,6 +365,7 @@ bool SessionClient::write_notify_enable_(bool *session_established) {
     return false;
   }
 
+  this->set_setup_step_(SetupStep::READY);
   set_flag_(session_established, true);
   return true;
 }
@@ -465,7 +459,7 @@ bool SessionClient::decrypt_packet_(uint8_t *packet20) const {
 
 bool SessionClient::handle_notify_packet(uint16_t handle, const uint8_t *value, uint16_t value_len,
                                          DecryptedNotify *out) const {
-  if (!this->session_ready_ || handle != this->notify_handle_ || value == nullptr || value_len != 20 || out == nullptr) {
+  if (!this->is_session_ready() || handle != this->notify_handle_ || value == nullptr || value_len != 20 || out == nullptr) {
     return false;
   }
 
@@ -485,7 +479,7 @@ bool SessionClient::handle_notify_packet(uint16_t handle, const uint8_t *value, 
 
 SendMeshCommandResult SessionClient::send_mesh_command(uint16_t target, uint8_t opcode, const uint8_t *payload,
                                                        size_t payload_len) {
-  if (!this->session_ready_) {
+  if (!this->is_session_ready()) {
     return SendMeshCommandResult::NOT_READY;
   }
   if (this->control_handle_ == 0 || this->gattc_if_ == ESP_GATT_IF_NONE) {
@@ -539,6 +533,22 @@ SendMeshCommandResult SessionClient::send_mesh_command(uint16_t target, uint8_t 
 bool SessionClient::is_control_write_timed_out(uint32_t timeout_ms) const {
   return this->control_write_pending_ &&
          esp_timer_get_time() - this->control_write_started_us_ >= static_cast<int64_t>(timeout_ms) * 1000;
+}
+
+void SessionClient::set_setup_step_(SetupStep step) {
+  this->setup_step_ = step;
+  this->setup_step_started_us_ = esp_timer_get_time();
+}
+
+bool SessionClient::fail_setup_(bool *need_disconnect) {
+  this->reset();
+  set_flag_(need_disconnect, true);
+  return false;
+}
+
+bool SessionClient::is_setup_timed_out(uint32_t timeout_ms) const {
+  return this->setup_step_ != SetupStep::IDLE && this->setup_step_ != SetupStep::READY &&
+         esp_timer_get_time() - this->setup_step_started_us_ >= static_cast<int64_t>(timeout_ms) * 1000;
 }
 
 }  // namespace v1

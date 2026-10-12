@@ -11,3 +11,8 @@ failure. Fixed command and notification vectors check AES byte order and session
 key derivation. Mutations of every notification byte must fail authentication
 without changing the decoded output. AES failures must prevent transmission.
 The physical BLE stack is not validated by these host tests.
+
+Setup tests cover deadlines for pairing writes/reads, notification registration,
+and notification enablement, including immediate and asynchronous failures,
+late events after reset, and the no-response write fallback. The session must
+remain unavailable until notification setup completes.
