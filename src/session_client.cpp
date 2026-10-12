@@ -376,7 +376,7 @@ bool SessionClient::write_notify_enable_(bool *session_established) {
   return true;
 }
 
-void SessionClient::encrypt_packet_(uint8_t *packet20) const {
+bool SessionClient::encrypt_packet_(uint8_t *packet20) const {
   std::array<uint8_t, 16> auth_nonce{};
   auth_nonce[0] = this->mac_data_[0];
   auth_nonce[1] = this->mac_data_[1];
@@ -389,13 +389,17 @@ void SessionClient::encrypt_packet_(uint8_t *packet20) const {
   auth_nonce[8] = 15;
 
   std::array<uint8_t, 16> authenticator{};
-  aes_encrypt_telink(this->session_key_, auth_nonce, &authenticator);
+  if (!aes_encrypt_telink(this->session_key_, auth_nonce, &authenticator)) {
+    return false;
+  }
   for (size_t i = 0; i < 15; i++) {
     authenticator[i] ^= packet20[i + 5];
   }
 
   std::array<uint8_t, 16> mic{};
-  aes_encrypt_telink(this->session_key_, authenticator, &mic);
+  if (!aes_encrypt_telink(this->session_key_, authenticator, &mic)) {
+    return false;
+  }
   packet20[3] = mic[0];
   packet20[4] = mic[1];
 
@@ -410,13 +414,16 @@ void SessionClient::encrypt_packet_(uint8_t *packet20) const {
   iv[8] = packet20[2];
 
   std::array<uint8_t, 16> stream{};
-  aes_encrypt_telink(this->session_key_, iv, &stream);
+  if (!aes_encrypt_telink(this->session_key_, iv, &stream)) {
+    return false;
+  }
   for (size_t i = 0; i < 15; i++) {
     packet20[i + 5] ^= stream[i];
   }
+  return true;
 }
 
-void SessionClient::decrypt_packet_(uint8_t *packet20) const {
+bool SessionClient::decrypt_packet_(uint8_t *packet20) const {
   std::array<uint8_t, 16> iv{};
   iv[0] = this->mac_data_[0];
   iv[1] = this->mac_data_[1];
@@ -434,10 +441,26 @@ void SessionClient::decrypt_packet_(uint8_t *packet20) const {
   }
 
   std::array<uint8_t, 16> stream{};
-  aes_encrypt_telink(this->session_key_, plaintext, &stream);
+  if (!aes_encrypt_telink(this->session_key_, plaintext, &stream)) {
+    return false;
+  }
   for (size_t i = 0; i + 7 < 20; i++) {
     packet20[i + 7] ^= stream[i];
   }
+
+  iv[8] = 13;
+  std::array<uint8_t, 16> authenticator{};
+  if (!aes_encrypt_telink(this->session_key_, iv, &authenticator)) {
+    return false;
+  }
+  for (size_t i = 0; i < 13; ++i) {
+    authenticator[i] ^= packet20[7 + i];
+  }
+  std::array<uint8_t, 16> mic{};
+  if (!aes_encrypt_telink(this->session_key_, authenticator, &mic)) {
+    return false;
+  }
+  return ((mic[0] ^ packet20[5]) | (mic[1] ^ packet20[6])) == 0;
 }
 
 bool SessionClient::handle_notify_packet(uint16_t handle, const uint8_t *value, uint16_t value_len,
@@ -448,7 +471,9 @@ bool SessionClient::handle_notify_packet(uint16_t handle, const uint8_t *value, 
 
   uint8_t packet[20] = {0};
   memcpy(packet, value, sizeof(packet));
-  this->decrypt_packet_(packet);
+  if (!this->decrypt_packet_(packet)) {
+    return false;
+  }
 
   out->opcode = packet[7];
   out->src = packet[3] | (static_cast<uint16_t>(packet[4]) << 8);
@@ -484,7 +509,9 @@ SendMeshCommandResult SessionClient::send_mesh_command(uint16_t target, uint8_t 
     packet[10 + i] = payload[i];
   }
 
-  this->encrypt_packet_(packet);
+  if (!this->encrypt_packet_(packet)) {
+    return SendMeshCommandResult::WRITE_ERROR;
+  }
 
   const auto status =
       esp_ble_gattc_write_char(this->gattc_if_, this->conn_id_, this->control_handle_, sizeof(packet), packet,

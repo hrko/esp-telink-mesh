@@ -196,14 +196,14 @@ class SessionClient {
    * @brief Encrypts a 20-byte outgoing mesh packet in-place.
    * @param packet20 Telink frame buffer.
    */
-  void encrypt_packet_(uint8_t *packet20) const;
+  bool encrypt_packet_(uint8_t *packet20) const;
 
   /**
    * @internal
    * @brief Decrypts a 20-byte incoming mesh packet in-place.
    * @param packet20 Telink frame buffer.
    */
-  void decrypt_packet_(uint8_t *packet20) const;
+  bool decrypt_packet_(uint8_t *packet20) const;
 
   /**
    * @internal
