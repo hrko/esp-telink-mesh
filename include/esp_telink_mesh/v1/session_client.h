@@ -39,6 +39,8 @@ enum class SendMeshCommandResult : uint8_t {
   NOT_READY = 2,
   /// GATT write call failed immediately.
   WRITE_ERROR = 3,
+  /// The 24-bit sequence space is exhausted; reconnect before sending again.
+  SEQUENCE_EXHAUSTED = 4,
 };
 
 /**
@@ -152,6 +154,9 @@ class SessionClient {
    */
   bool is_control_write_timed_out(uint32_t timeout_ms) const;
 
+  /// True once the sequence space is exhausted and the last write has completed.
+  bool is_sequence_exhausted() const { return this->packet_count_ > 0xFFFFFF && !this->control_write_pending_; }
+
   /**
    * @brief Gets the configured notify characteristic handle.
    */
@@ -237,7 +242,7 @@ class SessionClient {
   int64_t control_write_started_us_{0};
   bool session_ready_{false};
 
-  uint16_t packet_count_{1};
+  uint32_t packet_count_{1};
 };
 
 }  // namespace v1

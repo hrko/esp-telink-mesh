@@ -325,7 +325,7 @@ bool SessionClient::handle_pairing_response_(const uint8_t *data, uint16_t len, 
   }
 
   this->session_ready_ = true;
-  this->packet_count_ = static_cast<uint16_t>(esp_random() & 0xFFFF);
+  this->packet_count_ = esp_random() & 0xFFFFFF;
   if (this->packet_count_ == 0) {
     this->packet_count_ = 1;
   }
@@ -494,10 +494,14 @@ SendMeshCommandResult SessionClient::send_mesh_command(uint16_t target, uint8_t 
   if (this->control_write_pending_) {
     return SendMeshCommandResult::BUSY_PENDING_ACK;
   }
+  if (this->is_sequence_exhausted()) {
+    return SendMeshCommandResult::SEQUENCE_EXHAUSTED;
+  }
 
   uint8_t packet[20] = {0};
   packet[0] = this->packet_count_ & 0xFF;
   packet[1] = (this->packet_count_ >> 8) & 0xFF;
+  packet[2] = (this->packet_count_ >> 16) & 0xFF;
   packet[5] = target & 0xFF;
   packet[6] = (target >> 8) & 0xFF;
   packet[7] = opcode;
@@ -513,6 +517,8 @@ SendMeshCommandResult SessionClient::send_mesh_command(uint16_t target, uint8_t 
     return SendMeshCommandResult::WRITE_ERROR;
   }
 
+  // Reserve the nonce even if the transport rejects the write.
+  const uint32_t sequence = this->packet_count_++;
   const auto status =
       esp_ble_gattc_write_char(this->gattc_if_, this->conn_id_, this->control_handle_, sizeof(packet), packet,
                                ESP_GATT_WRITE_TYPE_RSP, ESP_GATT_AUTH_REQ_NONE);
@@ -523,13 +529,9 @@ SendMeshCommandResult SessionClient::send_mesh_command(uint16_t target, uint8_t 
 
   this->control_write_pending_ = true;
   this->control_write_started_us_ = esp_timer_get_time();
-  ESP_LOGV(TAG, "tx seq=0x%04X target=0x%04X opcode=0x%02X len=%u", this->packet_count_, target, opcode,
+  ESP_LOGV(TAG, "tx seq=0x%06X target=0x%04X opcode=0x%02X len=%u", static_cast<unsigned>(sequence), target, opcode,
            static_cast<unsigned>(data_len));
-
-  this->packet_count_++;
-  if (this->packet_count_ == 0) {
-    this->packet_count_ = 1;
-  }
+  (void) sequence;
 
   return SendMeshCommandResult::SENT;
 }
